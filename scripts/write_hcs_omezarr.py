@@ -1,13 +1,11 @@
-import numpy as np
 import zarr
 import napari
+from pathlib import Path
 from czitools.read_tools import read_tools
-from czitools.metadata_tools import czi_metadata as czimd
 from czitools.metadata_tools.czi_metadata import CziSampleInfo
-from czitools.metadata_tools.sample import get_scenes_for_well
-from ome_zarr.format import FormatV04
 from ome_zarr.io import parse_url
 from ome_zarr.writer import write_image, write_plate_metadata, write_well_metadata
+import shutil
 
 
 def extract_well_coordinates(
@@ -74,59 +72,82 @@ def get_scenes_for_well(sample: CziSampleInfo, well_id: str) -> list[int]:
     return scene_indices
 
 
-show_napari = False
-filepath = r"data/WP96_4Pos_B4-10_DAPI.czi"
+def convert_czi_to_hcs_zarr(czi_filepath: str, overwrite: bool = True) -> str:
+    """Convert CZI file to OME-ZARR HCS (High Content Screening) format.
 
-# read comnplete CZI file as 6D array (STCZYX)
-array6d, mdata = read_tools.read_6darray(filepath, use_dask=False)
+    This function converts a CZI (Carl Zeiss Image) file containing plate data into
+    the OME-ZARR HCS format. It handles multi-well plates with multiple fields per well.
+
+    Args:
+        czi_filepath: Path to the input CZI file
+        overwrite: If True, removes existing zarr files at the output path.
+                  If False, skips conversion if output exists.
+
+    Returns:
+        str: Path to the output ZARR file (.ngff_plate.zarr)
+
+    Note:
+        The output format follows the OME-NGFF specification for HCS data,
+        organizing the data in a plate/row/column/field hierarchy.
+    """
+    # Define output path
+    zarr_output_path = Path(czi_filepath[:-4] + "_ngff_plate.zarr")
+
+    # Handle existing files
+    if zarr_output_path.exists():
+        if overwrite:
+            shutil.rmtree(zarr_output_path)
+        else:
+            print(f"File exists at {zarr_output_path}. Set overwrite=True to remove.")
+            return str(zarr_output_path)
+
+    # Read CZI file
+    array6d, mdata = read_tools.read_6darray(czi_filepath, use_dask=False)
+
+    # Extract plate layout
+    row_names, col_names, well_paths = extract_well_coordinates(
+        mdata.sample.well_counter
+    )
+    field_paths = [
+        str(i)
+        for i in range(mdata.sample.well_counter[mdata.sample.well_array_names[0]])
+    ]
+
+    # Initialize zarr storage and write plate metadata
+    store = parse_url(zarr_output_path, mode="w").store
+    root = zarr.group(store=store)
+    write_plate_metadata(root, row_names, col_names, well_paths)
+
+    # Process wells
+    for wp in well_paths:
+        row, col = wp.split("/")
+        well_group = root.require_group(row).require_group(col)
+        write_well_metadata(well_group, field_paths)
+
+        current_well_id = wp.replace("/", "")
+        for fi, field in enumerate(field_paths):
+            image_group = well_group.require_group(str(field))
+            current_scene_index = mdata.sample.well_scene_indices[current_well_id][fi]
+
+            write_image(
+                image=array6d[current_scene_index, ...],
+                group=image_group,
+                axes=array6d.axes[1:].lower(),
+                storage_options=dict(chunks=(1, 1, 1, array6d.Y.size, array6d.X.size)),
+            )
+    return str(zarr_output_path)
 
 
-zarr_output_path = filepath[:-4] + "ngff_plate.zarr"
+# Main execution
+if __name__ == "__main__":
 
-# row_names = ["A", "B"]
-# col_names = ["1", "2", "3"]
-# well_paths = ["A/2", "B/3"]
-# field_paths = ["0", "1", "2"]
+    # Configuration parameters
+    show_napari = False  # Whether to display the result in napari viewer
+    filepath = r"data/WP96_4Pos_B4-10_DAPI.czi"
+    zarr_output_path = convert_czi_to_hcs_zarr(filepath, overwrite=True)
 
-row_names, col_names, well_paths = extract_well_coordinates(mdata.sample.well_counter)
-field_paths = [
-    str(i) for i in range(mdata.sample.well_counter[mdata.sample.well_array_names[0]])
-]
-
-
-# generate data
-mean_val = 10
-num_wells = len(well_paths)
-num_fields = len(field_paths)
-size_xy = 128
-size_z = 20
-rng = np.random.default_rng(0)
-data = rng.poisson(
-    mean_val, size=(num_wells, num_fields, size_z, size_xy, size_xy)
-).astype(np.uint8)
-
-# write the plate of images and corresponding metadata
-# Use fmt=FormatV04() in parse_url() to write v0.4 format (zarr v2)
-store = parse_url(zarr_output_path, mode="w").store
-root = zarr.group(store=store)
-write_plate_metadata(root, row_names, col_names, well_paths)
-for wi, wp in enumerate(well_paths):
-    row, col = wp.split("/")
-    row_group = root.require_group(row)
-    well_group = row_group.require_group(col)
-    write_well_metadata(well_group, field_paths)
-    for fi, field in enumerate(field_paths):
-        image_group = well_group.require_group(str(field))
-        write_image(
-            image=data[wi, fi],
-            group=image_group,
-            axes="zyx",
-            storage_options=dict(chunks=(1, size_xy, size_xy)),
-        )
-
-if show_napari:
-
-    viewer = napari.Viewer()
-    viewer.open(zarr_output_path, plugin="napari-ome-zarr")
-
-    napari.run()
+    # Optional: Display the result in napari viewer
+    if show_napari:
+        viewer = napari.Viewer()
+        viewer.open(zarr_output_path, plugin="napari-ome-zarr")
+        napari.run()
