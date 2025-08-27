@@ -1,0 +1,77 @@
+{
+  "attributes": {
+    "ome": {
+      "version": "0.5",
+      "plate": {
+        "columns": [
+          {
+            "name": "10"
+          },
+          {
+            "name": "4"
+          },
+          {
+            "name": "5"
+          },
+          {
+            "name": "6"
+          },
+          {
+            "name": "7"
+          },
+          {
+            "name": "8"
+          },
+          {
+            "name": "9"
+          }
+        ],
+        "rows": [
+          {
+            "name": "B"
+          }
+        ],
+        "wells": [
+          {
+            "path": "B/10",
+            "rowIndex": 0,
+            "columnIndex": 0
+          },
+          {
+            "path": "B/4",
+            "rowIndex": 0,
+            "columnIndex": 1
+          },
+          {
+            "path": "B/5",
+            "rowIndex": 0,
+            "columnIndex": 2
+          },
+          {
+            "path": "B/6",
+            "rowIndex": 0,
+            "columnIndex": 3
+          },
+          {
+            "path": "B/7",
+            "rowIndex": 0,
+            "columnIndex": 4
+          },
+          {
+            "path": "B/8",
+            "rowIndex": 0,
+            "columnIndex": 5
+          },
+          {
+            "path": "B/9",
+            "rowIndex": 0,
+            "columnIndex": 6
+          }
+        ]
+      }
+    }
+  },
+  "zarr_format": 3,
+  "consolidated_metadata": null,
+  "node_type": "group"
+}
