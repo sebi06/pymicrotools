@@ -34,6 +34,8 @@ if __name__ == "__main__":
 
             results[f"{row}/{col}"] = np.mean(field_intensities)
 
+    print(f"Total Size of results: {len(results)}")
+
     # Optional: Display the result in napari viewer
     if show_napari:
 
