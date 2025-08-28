@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# skip folders
+/.vscode/
+data/*.zarr
+data/*.xml
+**/data/*.zarr
+data/*.xml
