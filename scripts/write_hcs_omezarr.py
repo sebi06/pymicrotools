@@ -7,6 +7,8 @@ if __name__ == "__main__":
 
     # Configuration parameters
     show_napari = False  # Whether to display the result in napari viewer
+
+    # filepath to original CZI file
     filepath = r"data/WP96_4Pos_B4-10_DAPI.czi"
     # filepath = r"/home/sebi06/github/pymicrotools/data/WP96_4Pos_B4-10_DAPI.czi"
 
@@ -22,7 +24,7 @@ if __name__ == "__main__":
 
     # Iterate through all wells in the plate
     for well_meta in plate.metadata.wells:
-        print(f"Processing well: {well_meta.path}")
+
         # Get row (e.g., "B") and column (e.g., "4") names for the current well
         row = plate.metadata.rows[well_meta.rowIndex].name
         col = plate.metadata.columns[well_meta.columnIndex].name
@@ -40,7 +42,7 @@ if __name__ == "__main__":
                     # Load the image data into memory (compute() for dask arrays)
                     data = image.images[0].data.compute()
                     print(
-                        f"Field {field_idx} data shape: {data.shape}, dtype: {data.dtype}"
+                        f"Processing well: {well_meta.path} - Field {field_idx} data shape: {data.shape}, dtype: {data.dtype}"
                     )
 
                     # Calculate mean intensity for this field
