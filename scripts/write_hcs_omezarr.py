@@ -6,9 +6,9 @@ import numpy as np
 if __name__ == "__main__":
 
     # Configuration parameters
-    show_napari = True  # Whether to display the result in napari viewer
-    #filepath = r"data/WP96_4Pos_B4-10_DAPI.czi"
-    filepath = r"/home/sebi06/github/pymicrotools/data/WP96_4Pos_B4-10_DAPI.czi"
+    show_napari = False  # Whether to display the result in napari viewer
+    filepath = r"data/WP96_4Pos_B4-10_DAPI.czi"
+    # filepath = r"/home/sebi06/github/pymicrotools/data/WP96_4Pos_B4-10_DAPI.czi"
 
     # Convert CZI file to HCS-ZARR format and get the output path
     zarr_output_path = convert_czi_to_hcs_zarr(filepath, overwrite=True)
