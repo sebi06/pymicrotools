@@ -5,9 +5,7 @@ import ngff_zarr as nz
 from ngff_zarr.hcs import HCSPlate, to_hcs_zarr
 import shutil
 from czitools.read_tools import read_tools
-from ngff_zarr.v04.zarr_metadata import (
-    Plate, PlateColumn, PlateRow, PlateWell, PlateAcquisition
-)
+from ngff_zarr.v04.zarr_metadata import Plate, PlateColumn, PlateRow, PlateWell, PlateAcquisition
 
 # Main execution
 if __name__ == "__main__":
@@ -16,7 +14,7 @@ if __name__ == "__main__":
 
     # Configuration parameters
     show_napari = False  # Whether to display the result in napari viewer
-    czi_filepath = r"/home/sebi06/github/pymicrotools/data/WP96_4Pos_B4-10_DAPI.czi"
+    czi_filepath = r"data/WP96_4Pos_B4-10_DAPI.czi"
 
     # Read CZI file
     array6d, mdata = read_tools.read_6darray(czi_filepath, use_dask=False)
@@ -37,13 +35,15 @@ if __name__ == "__main__":
     field_paths = [str(i) for i in range(mdata.sample.well_counter[mdata.sample.well_array_names[0]])]
 
     # Create plate layout
-    columns = [PlateColumn(name="4"),
-               PlateColumn(name="5"),
-               PlateColumn(name="6"),
-               PlateColumn(name="7"),
-               PlateColumn(name="8"),
-               PlateColumn(name="9"),
-               PlateColumn(name="10")]
+    columns = [
+        PlateColumn(name="4"),
+        PlateColumn(name="5"),
+        PlateColumn(name="6"),
+        PlateColumn(name="7"),
+        PlateColumn(name="8"),
+        PlateColumn(name="9"),
+        PlateColumn(name="10"),
+    ]
     rows = [PlateRow(name="B")]
     wells = [
         PlateWell(path="B/4", rowIndex=1, columnIndex=3),
@@ -55,10 +55,7 @@ if __name__ == "__main__":
         PlateWell(path="B/10", rowIndex=1, columnIndex=9),
     ]
 
-    plate_96 = Plate(
-        columns=columns, rows=rows, wells=wells,
-        name="Example Plate96", field_count=4
-    )
+    plate_96 = Plate(columns=columns, rows=rows, wells=wells, name="Example Plate96", field_count=4)
 
     # Create the HCS plate structure
     hcs_plate = HCSPlate(store=zarr_output_path, plate_metadata=plate_96)
@@ -66,11 +63,12 @@ if __name__ == "__main__":
 
     for well in wells:
         print(f"Processing well: {well.path}")
-        row_name = rows[well.rowIndex].name
-        col_name = columns[well.columnIndex].name
-        print(f"Row: {row_name}, Column: {col_name}")
-        row_name, col = wp.split("/")
-        current_well_id = wp.replace("/", "")
+        # row_name = rows[well.rowIndex].name
+        # col_name = columns[well.columnIndex].name
+        # print(f"Row: {row_name}, Column: {col_name}")
+        row_name, col_name = well.path.split("/")
+        current_well_id = well.path.replace("/", "")
+        print(f"Current WellID: {current_well_id} Row: {row_name}, Column: {col_name}")
         for fi, field in enumerate(field_paths):
             current_scene_index = mdata.sample.well_scene_indices[current_well_id][fi]
 

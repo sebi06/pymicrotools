@@ -39,6 +39,7 @@ if __name__ == "__main__":
             for field_idx in range(len(well.images)):
                 image = well.get_image(field_idx)
                 if image:
+
                     # Load the image data into memory (compute() for dask arrays)
                     data = image.images[0].data.compute()
                     print(
