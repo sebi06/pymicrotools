@@ -69,7 +69,9 @@ def write_omezarr(
     if Path(zarr_path).exists() and overwrite:
         shutil.rmtree(zarr_path, ignore_errors=False, onerror=None)
     elif Path(zarr_path).exists() and not overwrite:
-        logger.warning(f"File already exists at {zarr_path}. Set overwrite=True to remove.")
+        logger.warning(
+            f"File already exists at {zarr_path}. Set overwrite=True to remove."
+        )
         return None
 
     # show currently used version of NGFF specification
@@ -102,17 +104,21 @@ def write_omezarr(
                 "active": True,
             }
         )
-    ome_zarr.writer.add_metadata(root, {"omero": {"name": metadata.filename, "channels": channels_list}})
+    ome_zarr.writer.add_metadata(
+        root, {"omero": {"name": metadata.filename, "channels": channels_list}}
+    )
 
     logger.info(f"Finished writing OME-ZARR to: {zarr_path}")
 
     return zarr_path
 
 
+# ----------------------------------------------------------------
+
 # open s simple dialog to select a CZI file
 filepath = r"data/CellDivision_T10_Z15_CH2_DCV_small.czi"
 
-show_napari = False  # Whether to display the result in napari viewer
+show_napari = True  # Whether to display the result in napari viewer
 
 # get the metadata_tools at once as one big class
 mdata = czimd.CziMetadata(filepath)
@@ -123,37 +129,38 @@ scene_id = 0
 array, mdata = read_tools.read_6darray(filepath, use_dask=True)
 array = array[scene_id, ...]
 
-# Approach 1: Use ome-zarr-py to write OME-ZARR
-zarr_path1 = Path(str(filepath)[:-4] + "_1.ome.zarr")
 
-# write OME-ZARR using utility function
-zarr_path1 = write_omezarr(array, zarr_path=str(zarr_path1), metadata=mdata, overwrite=True)
+# # Approach 1: Use ome-zarr-py to write OME-ZARR
+# zarr_path1 = Path(str(filepath)[:-4] + "_1.ome.zarr")
 
-print(f"Written OME-ZARR using ome-zarr.py: {zarr_path1}")
+# # write OME-ZARR using utility function
+# zarr_path1 = write_omezarr(array, zarr_path=str(zarr_path1), metadata=mdata, overwrite=True)
+# print(f"Written OME-ZARR using ome-zarr.py: {zarr_path1}")
 
-# # Approach 2: Use ngff-zarr to create NGFF structure and write using ome-zarr-py
-# zarr_path2 = Path(str(filepath)[:-4] + "_2.ome.zarr")
 
-# # create NGFF image from the array
-# image = nz.to_ngff_image(
-#     array.data,
-#     dims=["t", "c", "z", "y", "x"],
-#     scale={"y": mdata.scale.Y, "x": mdata.scale.X, "z": mdata.scale.Z},
-#     name=mdata.filename,
-# )
+# Approach 2: Use ngff-zarr to create NGFF structure and write using ome-zarr-py
+zarr_path2 = Path(str(filepath)[:-4] + "_2.ome.zarr")
 
-# # create multi-scaled, chunked data structure from the image
-# multiscales = nz.to_multiscales(image, [2, 4], method=nz.Methods.DASK_IMAGE_GAUSSIAN)
+# create NGFF image from the array
+image = nz.to_ngff_image(
+    array.data,
+    dims=["t", "c", "z", "y", "x"],
+    scale={"y": mdata.scale.Y, "x": mdata.scale.X, "z": mdata.scale.Z},
+    name=mdata.filename,
+)
 
-# # write using ngff-zarr
-# nz.to_ngff_zarr(zarr_path2, multiscales)
-# print(f"NGFF Image: {image}")
-# print(f"Written OME-ZARR using ngff-zarr: {zarr_path2}")
+# create multi-scaled, chunked data structure from the image
+multiscales = nz.to_multiscales(image, [2, 4], method=nz.Methods.DASK_IMAGE_GAUSSIAN)
+
+# write using ngff-zarr
+nz.to_ngff_zarr(zarr_path2, multiscales)
+print(f"NGFF Image: {image}")
+print(f"Written OME-ZARR using ngff-zarr: {zarr_path2}")
 
 # Optional: Visualize the plate data using napari
 if show_napari:
     import napari
 
     viewer = napari.Viewer()
-    viewer.open(zarr_path1, plugin="napari-ome-zarr")
+    viewer.open(zarr_path2, plugin="napari-ome-zarr")
     napari.run()
