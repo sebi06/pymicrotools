@@ -65,9 +65,6 @@ if __name__ == "__main__":
 
     for well in wells:
         print(f"Processing well: {well.path}")
-        # row_name = rows[well.rowIndex].name
-        # col_name = columns[well.columnIndex].name
-        # print(f"Row: {row_name}, Column: {col_name}")
         row_name, col_name = well.path.split("/")
         current_well_id = well.path.replace("/", "")
         print(f"Current WellID: {current_well_id} Row: {row_name}, Column: {col_name}")
