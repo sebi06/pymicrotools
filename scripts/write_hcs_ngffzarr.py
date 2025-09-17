@@ -11,6 +11,8 @@ from ngff_zarr.v04.zarr_metadata import Plate, PlateColumn, PlateRow, PlateWell,
 if __name__ == "__main__":
 
     overwrite = True
+    validate = True
+    show_napari = False
 
     # Configuration parameters
     show_napari = False  # Whether to display the result in napari viewer
@@ -82,3 +84,16 @@ if __name__ == "__main__":
                 field_index=fi,  # First field of view
                 acquisition_id=0,
             )
+
+    if validate:
+        print("Validating created HCS-ZARR file against schema...")
+        hcs_plate = nz.from_hcs_zarr(zarr_output_path, validate=True)
+        print("Validation successful.")
+
+        # Optional: Visualize the plate data using napari
+    if show_napari:
+        import napari
+
+        viewer = napari.Viewer()
+        viewer.open(zarr_output_path, plugin="napari-ome-zarr")
+        napari.run()
