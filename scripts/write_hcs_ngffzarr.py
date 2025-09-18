@@ -19,7 +19,8 @@ if __name__ == "__main__":
     czi_filepath = r"data/WP96_4Pos_B4-10_DAPI.czi"
 
     # Read CZI file
-    array6d, mdata = read_tools.read_6darray(czi_filepath, use_dask=False)
+    array6d, mdata = read_tools.read_6darray(czi_filepath, use_xarray=False)
+    print(f"Array Type: {type(array6d)}, Shape: {array6d.shape}, Dtype: {array6d.dtype}")
 
     # Define output path
     zarr_output_path = Path(czi_filepath[:-4] + "_ngff_plate.zarr")
