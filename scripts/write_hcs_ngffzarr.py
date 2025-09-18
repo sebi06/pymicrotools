@@ -18,7 +18,7 @@ if __name__ == "__main__":
     czi_filepath = r"data/WP96_4Pos_B4-10_DAPI.czi"
 
     # Read CZI file
-    array6d, mdata = read_tools.read_6darray(czi_filepath, use_xarray=False)
+    array6d, mdata = read_tools.read_6darray(czi_filepath, use_xarray=True)
     print(f"Array Type: {type(array6d)}, Shape: {array6d.shape}, Dtype: {array6d.dtype}")
 
     # Define output path
@@ -73,7 +73,7 @@ if __name__ == "__main__":
 
             # create current field image
             current_field_image = nz.NgffImage(
-                data=array6d[current_scene_index, ...],
+                data=array6d[current_scene_index, ...].data,
                 dims=["t", "c", "z", "y", "x"],
                 scale={"y": mdata.scale.Y, "x": mdata.scale.X, "z": mdata.scale.Z},
                 translation={"t": 0.0, "c": 0.0, "z": 0.0, "y": 0.0, "x": 0.0},
