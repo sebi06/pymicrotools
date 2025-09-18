@@ -318,10 +318,34 @@ def convert_czi_to_hcsplate(czi_filepath: str, plate_name: str = "Automated Plat
     return str(zarr_output_path)
 
 
-def get_display(metadata: CziMetadata, channel_index):
+def get_display(metadata: CziMetadata, channel_index: int) -> tuple[float, float, float]:
+    """
+    Extract display range settings for a specific channel from CZI metadata.
 
-    # try to read the display settings embedded in the CZI
+    This function retrieves the intensity display window settings (min, max) for a given
+    channel from the CZI file metadata. These settings control how the image appears
+    when displayed in image viewers.
+
+    Args:
+        metadata: CziMetadata object containing channel information and display settings
+        channel_index: Zero-based index of the channel to extract display settings for
+
+    Returns:
+        tuple[float, float, float]: A tuple containing:
+            - lower: Minimum intensity value for display window
+            - higher: Maximum intensity value for display window
+            - maxvalue: Absolute maximum intensity value for the channel
+
+    Note:
+        If display settings cannot be read from the CZI metadata (e.g., missing or
+        corrupted data), the function falls back to using 0 as minimum and the
+        channel's maximum value as both the display maximum and absolute maximum.
+    """
+
+    # Try to read the display settings embedded in the CZI file
     try:
+        # Calculate actual intensity values from normalized display limits (0.0-1.0)
+        # clims contains normalized values that need to be scaled by the max intensity
         lower = np.round(
             metadata.channelinfo.clims[channel_index][0] * metadata.maxvalue_list[channel_index],
             0,
@@ -331,11 +355,14 @@ def get_display(metadata: CziMetadata, channel_index):
             0,
         )
 
+        # Get the absolute maximum intensity value for this channel
         maxvalue = metadata.maxvalue_list[channel_index]
 
     except IndexError:
+        # Fallback when display settings are missing or inaccessible
         print("Calculation from display setting from CZI failed. Use 0-Max instead.")
         lower = 0
+        # Use the channel's maximum value from the alternative metadata location
         higher = metadata.maxvalue[channel_index]
         maxvalue = higher
 
@@ -386,59 +413,122 @@ def write_omezarr(
         - Uses the current NGFF (Next Generation File Format) specification.
     """
 
-    # check number of dimension of input array
+    # Validate input array dimensions - OME-ZARR supports up to 5D
     if len(array5d.shape) > 5:
         print("Input array as more than 5 dimensions.")
         return None
 
-    # check if zarr_path already exits
+    # Handle existing files based on overwrite parameter
     if Path(zarr_path).exists() and overwrite:
+        # Remove existing zarr store completely
         shutil.rmtree(zarr_path, ignore_errors=False, onerror=None)
     elif Path(zarr_path).exists() and not overwrite:
+        # Exit early if file exists and overwrite is disabled
         print(f"File already exists at {zarr_path}. Set overwrite=True to remove.")
         return None
 
-    # show currently used version of NGFF specification
+    # Display the NGFF specification version being used
     ngff_version = ome_zarr.format.CurrentFormat().version
     print(f"Using ngff format version: {ngff_version}")
 
-    # write the image data
+    # Initialize zarr store and create root group
     store = parse_url(zarr_path, mode="w").store
     root = zarr.group(store=store, overwrite=overwrite)
 
-    # write the OME-ZARR file
+    # Write the main image data to zarr
+    # Uses chunking strategy that keeps full XY planes together for efficient access
     ome_zarr.writer.write_image(
         image=array5d,
         group=root,
-        axes=array5d.axes[1:].lower(),
+        axes=array5d.axes[1:].lower(),  # Skip first axis (Scene) and convert to lowercase
         storage_options=dict(chunks=(1, 1, 1, array5d.Y.size, array5d.X.size)),
     )
 
+    # Build channel metadata for OMERO visualization
     channels_list = []
 
+    # Process each channel to extract display settings and metadata
     for ch_index in range(metadata.image.SizeC):
-
+        # Extract RGB color from channel metadata (skip first 3 chars, get hex color)
         rgb = metadata.channelinfo.colors[ch_index][3:]
+        # Get channel name for display
         chname = metadata.channelinfo.names[ch_index]
 
+        # Calculate display range (min/max intensity values) from CZI metadata
         lower, higher, maxvalue = get_display(metadata, ch_index)
 
+        # Create channel configuration for OMERO viewer
         channels_list.append(
             {
-                "color": rgb,
-                "label": chname,
-                "active": True,
-                "window": {"min": lower, "start": lower, "end": higher, "max": maxvalue},
+                "color": rgb,  # Hex color code for visualization
+                "label": chname,  # Display name for the channel
+                "active": True,  # Channel visible by default
+                "window": {  # Intensity display range
+                    "min": lower,  # Absolute minimum value
+                    "start": lower,  # Display window start
+                    "end": higher,  # Display window end
+                    "max": maxvalue,  # Absolute maximum value
+                },
             }
         )
-    ome_zarr.writer.add_metadata(root, {"omero": {"name": metadata.filename, "channels": channels_list}})
+
+    # Add OMERO metadata for proper visualization in compatible viewers
+    ome_zarr.writer.add_metadata(
+        root,
+        {
+            "omero": {
+                "name": metadata.filename,  # Original filename for reference
+                "channels": channels_list,  # Channel display configurations
+            }
+        },
+    )
 
     return zarr_path
 
 
 def write_omezarr_ngff(
     array5d, zarr_output_path: str, metadata: CziMetadata, scale_factors: list = [2, 4, 6], overwrite: bool = False
-):
+) -> Optional[nz.NgffImage]:
+    """
+    Write a 5D array to OME-ZARR NGFF format with multi-scale pyramids.
+    This function converts a 5D array (with dimensions t, c, z, y, x) to the OME-ZARR
+    Next Generation File Format (NGFF) specification, creating multi-scale representations
+    for efficient visualization and analysis.
+    Parameters
+    ----------
+    array5d : array-like
+        5D array with dimensions in order [t, c, z, y, x] representing time, channels,
+        z-depth, y-coordinate, and x-coordinate respectively.
+    zarr_output_path : str
+        File path where the OME-ZARR file will be written. Should end with '.ome.zarr'
+        extension by convention.
+    metadata : CziMetadata
+        Metadata object containing scale information (X, Y, Z pixel sizes) and filename
+        for the source image.
+    scale_factors : list, optional
+        List of downsampling factors for creating multi-scale pyramid levels.
+        Default is [2, 4, 6].
+    overwrite : bool, optional
+        If True, existing files at zarr_output_path will be removed before writing.
+        If False and file exists, function returns None without writing.
+        Default is False.
+    Returns
+    -------
+    image or None
+        Returns the NGFF image object if successful, or None if the file already
+        exists and overwrite=False.
+    Notes
+    -----
+    - Creates multi-scale representations using Gaussian downsampling via dask-image
+    - Automatically sets proper dimension names and scale metadata
+    - Uses chunked storage for efficient access patterns
+    - Follows OME-ZARR NGFF specification for interoperability
+    """
+
+    # Validate input array dimensions - OME-ZARR supports up to 5D
+    if len(array5d.shape) > 5:
+        print("Input array as more than 5 dimensions.")
+        return None
 
     # check if zarr_path already exits
     if Path(zarr_output_path).exists() and overwrite:
