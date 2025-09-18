@@ -1,11 +1,10 @@
-from hcs_zarr_utils import convert_czi_to_hcs_zarr
-from hcs_zarr_utils import define_plate, extract_well_coordinates, define_plate_by_well_count, PlateType, PLATE_FORMATS
+from hcs_zarr_utils import extract_well_coordinates
 from pathlib import Path
 import ngff_zarr as nz
 from ngff_zarr.hcs import HCSPlate, to_hcs_zarr
 import shutil
 from czitools.read_tools import read_tools
-from ngff_zarr.v04.zarr_metadata import Plate, PlateColumn, PlateRow, PlateWell, PlateAcquisition
+from ngff_zarr.v04.zarr_metadata import Plate, PlateColumn, PlateRow, PlateWell
 
 # Main execution
 if __name__ == "__main__":
@@ -72,10 +71,22 @@ if __name__ == "__main__":
         for fi, field in enumerate(field_paths):
             current_scene_index = mdata.sample.well_scene_indices[current_well_id][fi]
 
+            # create current field image
+            current_field_image = nz.NgffImage(
+                data=array6d[current_scene_index, ...],
+                dims=["t", "c", "z", "y", "x"],
+                scale={"y": mdata.scale.Y, "x": mdata.scale.X, "z": mdata.scale.Z},
+                translation={"t": 0.0, "c": 0.0, "z": 0.0, "y": 0.0, "x": 0.0},
+                name=mdata.filename,
+            )
+
+            # create multi-scaled, chunked data structure from the image
+            multiscales = nz.to_multiscales(current_field_image, [2, 4], method=nz.Methods.DASK_IMAGE_GAUSSIAN)
+
             # write to wells
             nz.write_hcs_well_image(
                 store=zarr_output_path,
-                multiscales=array6d[current_scene_index, ...],
+                multiscales=multiscales,
                 plate_metadata=plate_96,
                 row_name=row_name,
                 column_name=col_name,
