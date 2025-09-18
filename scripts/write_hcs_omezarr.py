@@ -1,4 +1,4 @@
-from hcs_zarr_utils import convert_czi_to_hcs_zarr
+from scripts.ome_zarr_utils import convert_czi_to_hcs_zarr
 import ngff_zarr as nz
 import numpy as np
 

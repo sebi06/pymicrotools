@@ -212,3 +212,4 @@ data/*.zarr
 data/*.xml
 **/data/*.zarr
 data/*.xml
+/old
