@@ -1,4 +1,4 @@
-from scripts.ome_zarr_utils import define_plate, define_plate_by_well_count, PlateType, PLATE_FORMATS
+from ome_zarr_utils import define_plate, define_plate_by_well_count, PlateType, PLATE_FORMATS
 
 
 # Example usage:
