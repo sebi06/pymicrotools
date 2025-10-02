@@ -213,3 +213,4 @@ data/*.xml
 **/data/*.zarr
 data/*.xml
 /old
+/scripts/test.czi
