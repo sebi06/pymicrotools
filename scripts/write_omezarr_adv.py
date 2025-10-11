@@ -4,8 +4,10 @@ from typing import Optional
 from ome_zarr_utils import write_omezarr
 
 # Configuration parameters
-filepath: str = r"data/CellDivision_T10_Z15_CH2_DCV_small.czi"
-# filepath: str = r"data/WP96_4Pos_B4-10_DAPI.czi"
+# Point to the main data folder (two directories up from demo/omezarr_testing)
+filepath: str = str(Path(__file__).parent.parent.parent / "data" / "CellDivision_T10_Z15_CH2_DCV_small.czi")
+# filepath: str = str(Path(__file__).parent.parent.parent / "data" / "WP96_4Pos_B4-10_DAPI.czi")
+
 show_napari: bool = True  # Whether to display the result in napari viewer
 scene_id: int = 0
 

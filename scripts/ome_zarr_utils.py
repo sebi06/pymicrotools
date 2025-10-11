@@ -55,10 +55,24 @@ def convert_czi_to_hcs_zarr(czi_filepath: str, overwrite: bool = True) -> str:
     row_names, col_names, well_paths = extract_well_coordinates(mdata.sample.well_counter)
     field_paths = [str(i) for i in range(mdata.sample.well_counter[mdata.sample.well_array_names[0]])]
 
-    # Initialize zarr storage and write plate metadata
+    # Initialize zarr storage and write plate metadata with proper row/column objects
     store = parse_url(zarr_output_path, mode="w").store
     root = zarr.group(store=store)
+
+    # Create PlateRow and PlateColumn objects (required for proper metadata)
+    # This ensures plate.metadata.rows and plate.metadata.columns are populated
+    columns_metadata = [PlateColumn(name=str(col)) for col in sorted(col_names, key=int)]
+    rows_metadata = [PlateRow(name=row) for row in sorted(row_names)]
+
+    # Write plate metadata using the standard ome-zarr-py function
     write_plate_metadata(root, row_names, col_names, well_paths)
+
+    # Additionally, store the rows and columns in the metadata for compatibility
+    # This is what ngff-zarr expects to find
+    plate_attrs = root.attrs.asdict()
+    plate_attrs["rows"] = [{"name": r.name} for r in rows_metadata]
+    plate_attrs["columns"] = [{"name": c.name} for c in columns_metadata]
+    root.attrs.update(plate_attrs)
 
     # Process wells
     for wp in well_paths:
