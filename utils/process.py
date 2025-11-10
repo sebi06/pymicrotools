@@ -6,7 +6,7 @@ import inspect
 import numpy as np
 from scipy.ndimage import gaussian_filter
 from typing import List, NamedTuple, Union, Tuple, Callable
-from misc import measure_execution_time, measure_memory_usage
+from misc_czitools import measure_execution_time, measure_memory_usage
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from multiprocessing import cpu_count
 
@@ -374,7 +374,7 @@ def apply_gauss(array: np.ndarray, sigma: float) -> np.ndarray:
 
 
 # Example usage:
-array = np.random.randint(0, high=100, size=(1, 2, 20, 2000, 1500), dtype=int)
+array = np.random.randint(0, high=100, size=(1, 5, 20, 2000, 1500), dtype=int)
 
 # Apply function to array
 filtered_array1 = apply_filter(array, sigma=2)
