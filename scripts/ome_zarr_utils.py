@@ -18,6 +18,7 @@ import xarray as xr
 from typing import Union, Optional
 import dask.array as da
 import logging
+from well_surface import Point3D
 
 # Get logger instance (logging configuration will be done by the main script)
 logger = logging.getLogger(__name__)
@@ -241,9 +242,9 @@ class PlateConfiguration:
     rows: int
     columns: int
     name: str
-    surface_points: List[tuple] = field(
+    surface_points: List[Point3D] = field(
         default_factory=list
-    )  # List of (X, Y, Z) tuples for surface calibration
+    )  # List of Point3D objects for surface calibration
     _surface_interpolator: Optional[object] = field(
         default=None, init=False, repr=False
     )
@@ -276,19 +277,28 @@ class PlateConfiguration:
             y (float): Y-coordinate in micrometers
             z (float): Z-coordinate (focus/height) in micrometers
         """
-        self.surface_points.append((x, y, z))
+        self.surface_points.append(Point3D(X=x, Y=y, Z=z))
         if len(self.surface_points) >= 3:
             # Reinitialize interpolator with updated points
             self._setup_surface_interpolator()
 
-    def add_surface_points(self, points: List[tuple]) -> None:
+    def add_surface_points(self, points: List[Union[tuple, Point3D]]) -> None:
         """
         Add multiple calibration points for surface interpolation.
 
         Args:
-            points (List[tuple]): List of (X, Y, Z) tuples
+            points (List[Union[tuple, Point3D]]): List of (X, Y, Z) tuples or Point3D objects
         """
-        self.surface_points.extend(points)
+        for point in points:
+            if isinstance(point, tuple) and len(point) == 3:
+                # Convert tuple to Point3D
+                self.surface_points.append(Point3D(X=point[0], Y=point[1], Z=point[2]))
+            elif isinstance(point, Point3D):
+                self.surface_points.append(point)
+            else:
+                raise ValueError(
+                    f"Invalid point format. Expected tuple (x, y, z) or Point3D, got {type(point)}"
+                )
         if len(self.surface_points) >= 3:
             self._setup_surface_interpolator()
 
@@ -309,13 +319,10 @@ class PlateConfiguration:
             import sys
 
             sys.path.insert(0, str(Path(__file__).parent))
-            from well_surface import Point3D, Surface3D
+            from well_surface import Surface3D
 
-            # Convert tuples to Point3D objects
-            control_points = [Point3D(X=x, Y=y, Z=z) for x, y, z in self.surface_points]
-
-            # Create surface interpolator
-            self._surface_interpolator = Surface3D(control_points)
+            # Create surface interpolator with Point3D objects
+            self._surface_interpolator = Surface3D(self.surface_points)
             logger.info(
                 f"Surface interpolator initialized with {len(self.surface_points)} control points"
             )
@@ -499,8 +506,8 @@ class PlateConfiguration:
         print("=" * 70)
         print(f"Number of calibration points: {len(self.surface_points)}")
         print("\nCalibration Points (X, Y, Z):")
-        for i, (x, y, z) in enumerate(self.surface_points, 1):
-            print(f"  P{i}: X={x:12.2f}, Y={y:12.2f}, Z={z:12.2f}")
+        for i, point in enumerate(self.surface_points, 1):
+            print(f"  P{i}: X={point.X:12.2f}, Y={point.Y:12.2f}, Z={point.Z:12.2f}")
 
         if self._surface_interpolator:
             print(

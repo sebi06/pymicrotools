@@ -6,6 +6,7 @@ and use them to interpolate Z-values for any XY position.
 """
 
 from ome_zarr_utils import PlateConfiguration, PlateType
+from well_surface import Point3D
 
 
 def example_basic_usage():
@@ -161,10 +162,44 @@ def example_custom_plate_with_calibration():
     print(f"Well P24 (bottom-right): Z = {z_edge:.2f}")
 
 
+def example_point3d_objects():
+    """Example: Using Point3D objects directly for surface calibration"""
+    print("\n" + "=" * 70)
+    print("Example 5: Surface Calibration with Point3D Objects")
+    print("=" * 70)
+
+    # Create a 48-well plate
+    plate = PlateType.PLATE_48.value
+
+    # Create calibration points using Point3D objects
+    calibration_points = [
+        Point3D(X=0.0, Y=0.0, Z=0.0),  # Top-left
+        Point3D(X=0.0, Y=54000.0, Z=75.0),  # Top-right
+        Point3D(X=60000.0, Y=54000.0, Z=150.0),  # Bottom-right
+    ]
+
+    plate.add_surface_points(calibration_points)
+
+    plate.print_surface_info()
+
+    # Query Z-values
+    print("\nInterpolated Z-Values:")
+    print("-" * 70)
+    test_points = [
+        (0.0, 0.0, "Top-left"),
+        (30000.0, 27000.0, "Center"),
+        (60000.0, 54000.0, "Bottom-right"),
+    ]
+
+    for x, y, description in test_points:
+        z = plate.get_z_for_xy(x, y)
+        print(f"  XY ({x:10.1f}, {y:10.1f}) → Z = {z:10.2f}  [{description}]")
+
+
 def example_well_id_queries():
     """Example: Query Z-values using well IDs"""
     print("\n" + "=" * 70)
-    print("Example 5: Query Z-Values Using Well IDs")
+    print("Example 6: Query Z-Values Using Well IDs")
     print("=" * 70)
 
     # Create a 96-well plate with calibration
@@ -224,6 +259,7 @@ if __name__ == "__main__":
     example_well_specific()
     example_incremental_addition()
     example_custom_plate_with_calibration()
+    example_point3d_objects()
     example_well_id_queries()
 
     print("\n" + "=" * 70)
