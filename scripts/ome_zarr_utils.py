@@ -10,8 +10,8 @@ import shutil
 import ngff_zarr as nz
 from ngff_zarr.v04.zarr_metadata import Plate, PlateColumn, PlateRow, PlateWell
 from ngff_zarr.hcs import HCSPlate, to_hcs_zarr
-from dataclasses import dataclass
-from typing import Dict
+from dataclasses import dataclass, field
+from typing import Dict, List
 from enum import Enum, unique
 import numpy as np
 import xarray as xr
@@ -23,7 +23,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def setup_logging(log_file_path: str = None, log_level: int = logging.INFO, force_reconfigure: bool = False):
+def setup_logging(
+    log_file_path: str = None,
+    log_level: int = logging.INFO,
+    force_reconfigure: bool = False,
+):
     """
     Set up logging configuration consistently across all functions.
 
@@ -36,9 +40,12 @@ def setup_logging(log_file_path: str = None, log_level: int = logging.INFO, forc
     root_logger = logging.getLogger()
 
     # Check if logging is already configured with file handler
-    has_file_handler = any(isinstance(h, logging.FileHandler) for h in root_logger.handlers)
+    has_file_handler = any(
+        isinstance(h, logging.FileHandler) for h in root_logger.handlers
+    )
     has_console_handler = any(
-        isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler) for h in root_logger.handlers
+        isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)
+        for h in root_logger.handlers
     )
 
     # If logging is already properly configured and we're not forcing reconfiguration, skip
@@ -53,7 +60,9 @@ def setup_logging(log_file_path: str = None, log_level: int = logging.INFO, forc
             root_logger.removeHandler(handler)
 
         # Set up formatter
-        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
 
         # Add console handler
         console_handler = logging.StreamHandler()
@@ -75,7 +84,9 @@ class omezarr_package(Enum):
     NGFF_ZARR = 2
 
 
-def convert_czi2hcs_omezarr(czi_filepath: str, overwrite: bool = True, log_file_path: str = None) -> str:
+def convert_czi2hcs_omezarr(
+    czi_filepath: str, overwrite: bool = True, log_file_path: str = None
+) -> str:
     """Convert CZI file to OME-ZARR HCS (High Content Screening) format.
 
     This function converts a CZI (Carl Zeiss Image) file containing plate data into
@@ -115,15 +126,22 @@ def convert_czi2hcs_omezarr(czi_filepath: str, overwrite: bool = True, log_file_
         if overwrite:
             shutil.rmtree(zarr_output_path)
         else:
-            logger.info(f"File exists at {zarr_output_path}. Set overwrite=True to remove.")
+            logger.info(
+                f"File exists at {zarr_output_path}. Set overwrite=True to remove."
+            )
             return str(zarr_output_path)
 
     # Read CZI file
     array6d, mdata = read_tools.read_6darray(czi_filepath, use_xarray=True)
 
     # Extract plate layout
-    row_names, col_names, well_paths = extract_well_coordinates(mdata.sample.well_counter)
-    field_paths = [str(i) for i in range(mdata.sample.well_counter[mdata.sample.well_array_names[0]])]
+    row_names, col_names, well_paths = extract_well_coordinates(
+        mdata.sample.well_counter
+    )
+    field_paths = [
+        str(i)
+        for i in range(mdata.sample.well_counter[mdata.sample.well_array_names[0]])
+    ]
 
     # Initialize zarr storage and write plate metadata with proper row/column objects
     store = parse_url(zarr_output_path, mode="w").store
@@ -131,7 +149,9 @@ def convert_czi2hcs_omezarr(czi_filepath: str, overwrite: bool = True, log_file_
 
     # Create PlateRow and PlateColumn objects (required for proper metadata)
     # This ensures plate.metadata.rows and plate.metadata.columns are populated
-    columns_metadata = [PlateColumn(name=str(col)) for col in sorted(col_names, key=int)]
+    columns_metadata = [
+        PlateColumn(name=str(col)) for col in sorted(col_names, key=int)
+    ]
     rows_metadata = [PlateRow(name=row) for row in sorted(row_names)]
 
     # Write plate metadata using the standard ome-zarr-py function
@@ -155,7 +175,9 @@ def convert_czi2hcs_omezarr(czi_filepath: str, overwrite: bool = True, log_file_
             image_group = well_group.require_group(str(field))
             # get the current scene index
             current_scene_index = mdata.sample.well_scene_indices[current_well_id][fi]
-            logger.info(f"Writing Well: {wp}, Field: {field}, Scene Index: {current_scene_index}")
+            logger.info(
+                f"Writing Well: {wp}, Field: {field}, Scene Index: {current_scene_index}"
+            )
 
             write_image(
                 image=array6d[current_scene_index, ...],
@@ -214,11 +236,22 @@ def extract_well_coordinates(
 
 @dataclass
 class PlateConfiguration:
-    """Configuration for standard microplate formats"""
+    """Configuration for standard microplate formats with optional surface calibration data"""
 
     rows: int
     columns: int
     name: str
+    surface_points: List[tuple] = field(
+        default_factory=list
+    )  # List of (X, Y, Z) tuples for surface calibration
+    _surface_interpolator: Optional[object] = field(
+        default=None, init=False, repr=False
+    )
+
+    def __post_init__(self):
+        """Initialize surface interpolator if surface points are provided"""
+        if self.surface_points:
+            self._setup_surface_interpolator()
 
     @property
     def total_wells(self) -> int:
@@ -233,6 +266,248 @@ class PlateConfiguration:
     def column_labels(self) -> list:
         """Generate column labels (1, 2, 3, ...)"""
         return [str(i) for i in range(1, self.columns + 1)]
+
+    def add_surface_point(self, x: float, y: float, z: float) -> None:
+        """
+        Add a calibration point for surface interpolation.
+
+        Args:
+            x (float): X-coordinate in micrometers
+            y (float): Y-coordinate in micrometers
+            z (float): Z-coordinate (focus/height) in micrometers
+        """
+        self.surface_points.append((x, y, z))
+        if len(self.surface_points) >= 3:
+            # Reinitialize interpolator with updated points
+            self._setup_surface_interpolator()
+
+    def add_surface_points(self, points: List[tuple]) -> None:
+        """
+        Add multiple calibration points for surface interpolation.
+
+        Args:
+            points (List[tuple]): List of (X, Y, Z) tuples
+        """
+        self.surface_points.extend(points)
+        if len(self.surface_points) >= 3:
+            self._setup_surface_interpolator()
+
+    def _setup_surface_interpolator(self) -> None:
+        """
+        Set up surface interpolator using Delaunay triangulation and cubic spline.
+        This is called automatically when surface points are added.
+        """
+        if len(self.surface_points) < 3:
+            logger.warning(
+                f"Need at least 3 surface points for interpolation, got {len(self.surface_points)}"
+            )
+            self._surface_interpolator = None
+            return
+
+        try:
+            # Import here to avoid circular dependency
+            import sys
+
+            sys.path.insert(0, str(Path(__file__).parent))
+            from well_surface import Point3D, Surface3D
+
+            # Convert tuples to Point3D objects
+            control_points = [Point3D(X=x, Y=y, Z=z) for x, y, z in self.surface_points]
+
+            # Create surface interpolator
+            self._surface_interpolator = Surface3D(control_points)
+            logger.info(
+                f"Surface interpolator initialized with {len(self.surface_points)} control points"
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize surface interpolator: {e}")
+            self._surface_interpolator = None
+
+    def has_surface_calibration(self) -> bool:
+        """Check if surface calibration data is available"""
+        return self._surface_interpolator is not None
+
+    def get_z_for_xy(self, x: float, y: float) -> Optional[float]:
+        """
+        Get Z-coordinate (focus height) for given XY position using surface interpolation.
+
+        Args:
+            x (float): X-coordinate in micrometers
+            y (float): Y-coordinate in micrometers
+
+        Returns:
+            float: Interpolated or extrapolated Z-coordinate, or None if no calibration available
+
+        Raises:
+            ValueError: If interpolation fails
+        """
+        if self._surface_interpolator is None:
+            logger.warning(
+                "No surface calibration available. Add surface points first."
+            )
+            return None
+
+        try:
+            # Try interpolation (inside convex hull)
+            z = self._surface_interpolator.get_z_at_xy(x, y)
+            return z
+        except ValueError:
+            # Use extrapolation (outside convex hull)
+            try:
+                z = self._surface_interpolator._extrapolate_z(x, y)
+                return z
+            except Exception as e:
+                logger.error(
+                    f"Failed to interpolate/extrapolate Z for XY ({x}, {y}): {e}"
+                )
+                raise
+
+    def get_z_for_well(self, well_row: int, well_column: int) -> Optional[float]:
+        """
+        Get Z-coordinate for a well position based on surface calibration.
+        Assumes well positions are based on standard well spacing.
+
+        Args:
+            well_row (int): Row index (0-based)
+            well_column (int): Column index (0-based)
+
+        Returns:
+            float: Z-coordinate for the well center
+        """
+        if self._surface_interpolator is None:
+            return None
+
+        # Typical well spacing is 9000 micrometers for 96-well plates
+        # Adjust based on your plate specifications
+        x = well_column * 9000.0
+        y = well_row * 9000.0
+
+        return self.get_z_for_xy(x, y)
+
+    def get_z_for_well_id(
+        self, well_id: str, well_spacing: float = 9000.0
+    ) -> Optional[float]:
+        """
+        Get Z-coordinate for a well using its ID (e.g., "B3", "B/3", "B-3").
+
+        Args:
+            well_id (str): Well identifier in format:
+                          - "B3" (letter followed by number)
+                          - "B/3" (letter, slash, number)
+                          - "B-3" (letter, dash, number)
+            well_spacing (float): Distance between wells in micrometers (default: 9000.0)
+
+        Returns:
+            float: Z-coordinate for the well center, or None if no calibration available
+
+        Raises:
+            ValueError: If well_id format is invalid or indices out of range
+        """
+        if self._surface_interpolator is None:
+            logger.warning(
+                "No surface calibration available. Add surface points first."
+            )
+            return None
+
+        # Parse well ID
+        row_index, col_index = self._parse_well_id(well_id)
+
+        # Calculate XY coordinates
+        x = col_index * well_spacing
+        y = row_index * well_spacing
+
+        return self.get_z_for_xy(x, y)
+
+    def _parse_well_id(self, well_id: str) -> tuple:
+        """
+        Parse well ID and return (row_index, column_index).
+
+        Args:
+            well_id (str): Well identifier (e.g., "B3", "B/3", "B-3")
+
+        Returns:
+            tuple: (row_index, column_index) with 0-based indexing
+
+        Raises:
+            ValueError: If format is invalid or indices out of range
+        """
+        # Remove whitespace and convert to uppercase
+        well_id = well_id.strip().upper()
+
+        # Extract row letter and column number
+        # Handle formats: "B3", "B/3", "B-3"
+        row_letter = None
+        col_number = None
+
+        # Try different separators
+        for separator in ["", "/", "-"]:
+            if separator == "":
+                # No separator: first char is letter, rest is number
+                if len(well_id) >= 2 and well_id[0].isalpha() and well_id[1:].isdigit():
+                    row_letter = well_id[0]
+                    col_number = well_id[1:]
+                    break
+            else:
+                # With separator
+                if separator in well_id:
+                    parts = well_id.split(separator)
+                    if (
+                        len(parts) == 2
+                        and len(parts[0]) == 1
+                        and parts[0].isalpha()
+                        and parts[1].isdigit()
+                    ):
+                        row_letter = parts[0]
+                        col_number = parts[1]
+                        break
+
+        if row_letter is None or col_number is None:
+            raise ValueError(
+                f"Invalid well ID format: '{well_id}'. "
+                "Expected format: 'B3', 'B/3', or 'B-3'"
+            )
+
+        # Convert row letter to index
+        row_index = ord(row_letter) - ord("A")
+
+        # Convert column number to index (1-based to 0-based)
+        col_index = int(col_number) - 1
+
+        # Validate indices
+        if row_index < 0 or row_index >= self.rows:
+            raise ValueError(
+                f"Row '{row_letter}' is out of range for {self.name} "
+                f"(valid rows: A-{chr(ord('A') + self.rows - 1)})"
+            )
+
+        if col_index < 0 or col_index >= self.columns:
+            raise ValueError(
+                f"Column {col_number} is out of range for {self.name} "
+                f"(valid columns: 1-{self.columns})"
+            )
+
+        return row_index, col_index
+
+    def print_surface_info(self) -> None:
+        """Print surface calibration information"""
+        if not self.surface_points:
+            print("No surface calibration points defined.")
+            return
+
+        print("=" * 70)
+        print(f"Surface Calibration for {self.name}")
+        print("=" * 70)
+        print(f"Number of calibration points: {len(self.surface_points)}")
+        print("\nCalibration Points (X, Y, Z):")
+        for i, (x, y, z) in enumerate(self.surface_points, 1):
+            print(f"  P{i}: X={x:12.2f}, Y={y:12.2f}, Z={z:12.2f}")
+
+        if self._surface_interpolator:
+            print(
+                f"\nPlane Equation: Z = {self._surface_interpolator.plane_a:.8f}*X + "
+                f"{self._surface_interpolator.plane_b:.8f}*Y + {self._surface_interpolator.plane_c:.8f}"
+            )
+        print("=" * 70)
 
 
 class PlateType(Enum):
@@ -282,7 +557,13 @@ def define_plate(plate_type: PlateType, field_count: int = 1) -> Plate:
     ]
 
     # Create plate metadata
-    plate_metadata = Plate(name=config.name, columns=columns, rows=rows, wells=wells, field_count=field_count)
+    plate_metadata = Plate(
+        name=config.name,
+        columns=columns,
+        rows=rows,
+        wells=wells,
+        field_count=field_count,
+    )
 
     return plate_metadata
 
@@ -303,7 +584,9 @@ def define_plate_by_well_count(well_count: int, field_count: int = 1) -> Plate:
     """
     if well_count not in PLATE_FORMATS:
         available = list(PLATE_FORMATS.keys())
-        raise ValueError(f"Unsupported well count: {well_count}. Available formats: {available}")
+        raise ValueError(
+            f"Unsupported well count: {well_count}. Available formats: {available}"
+        )
 
     config = PLATE_FORMATS[well_count]
 
@@ -319,7 +602,13 @@ def define_plate_by_well_count(well_count: int, field_count: int = 1) -> Plate:
     ]
 
     # Create plate metadata
-    plate_metadata = Plate(name=config.name, columns=columns, rows=rows, wells=wells, field_count=field_count)
+    plate_metadata = Plate(
+        name=config.name,
+        columns=columns,
+        rows=rows,
+        wells=wells,
+        field_count=field_count,
+    )
 
     return plate_metadata
 
@@ -365,15 +654,22 @@ def convert_czi2hcs_ngff(
         if overwrite:
             shutil.rmtree(zarr_output_path)
         else:
-            logger.info(f"File exists at {zarr_output_path}. Set overwrite=True to remove.")
+            logger.info(
+                f"File exists at {zarr_output_path}. Set overwrite=True to remove."
+            )
             return str(zarr_output_path)
 
     # Read CZI file
     array6d, mdata = read_tools.read_6darray(czi_filepath, use_xarray=True)
 
     # Extract plate layout
-    row_names, col_names, well_paths = extract_well_coordinates(mdata.sample.well_counter)
-    field_paths = [str(i) for i in range(mdata.sample.well_counter[mdata.sample.well_array_names[0]])]
+    row_names, col_names, well_paths = extract_well_coordinates(
+        mdata.sample.well_counter
+    )
+    field_paths = [
+        str(i)
+        for i in range(mdata.sample.well_counter[mdata.sample.well_array_names[0]])
+    ]
 
     columns = [PlateColumn(name=str(col)) for col in sorted(col_names, key=int)]
     rows = [PlateRow(name=row) for row in sorted(row_names)]
@@ -399,7 +695,12 @@ def convert_czi2hcs_ngff(
             )
 
     plate = Plate(
-        columns=columns, rows=rows, wells=wells, name=plate_name, field_count=len(field_paths), version=version
+        columns=columns,
+        rows=rows,
+        wells=wells,
+        name=plate_name,
+        field_count=len(field_paths),
+        version=version,
     )
 
     # Create the HCS plate structure
@@ -414,7 +715,9 @@ def convert_czi2hcs_ngff(
         for fi, field in enumerate(field_paths):
             current_scene_index = mdata.sample.well_scene_indices[current_well_id][fi]
 
-            logger.info(f"Writing Well: {well.path}, Field: {field}, Scene Index: {current_scene_index}")
+            logger.info(
+                f"Writing Well: {well.path}, Field: {field}, Scene Index: {current_scene_index}"
+            )
             # create current field image
             current_field_image = nz.NgffImage(
                 data=array6d[current_scene_index, ...].data,
@@ -426,7 +729,9 @@ def convert_czi2hcs_ngff(
 
             # create multi-scaled, chunked data structure from the image
             multiscales = nz.to_multiscales(
-                current_field_image, scale_factors=[2, 2, 2], method=nz.Methods.DASK_IMAGE_GAUSSIAN
+                current_field_image,
+                scale_factors=[2, 2, 2],
+                method=nz.Methods.DASK_IMAGE_GAUSSIAN,
             )
 
             # write to wells
@@ -449,7 +754,9 @@ def convert_czi2hcs_ngff(
     return str(zarr_output_path)
 
 
-def get_display(metadata: CziMetadata, channel_index: int) -> tuple[float, float, float]:
+def get_display(
+    metadata: CziMetadata, channel_index: int
+) -> tuple[float, float, float]:
     """
     Extract display range settings for a specific channel from CZI metadata.
 
@@ -478,11 +785,13 @@ def get_display(metadata: CziMetadata, channel_index: int) -> tuple[float, float
         # Calculate actual intensity values from normalized display limits (0.0-1.0)
         # clims contains normalized values that need to be scaled by the max intensity
         lower = np.round(
-            metadata.channelinfo.clims[channel_index][0] * metadata.maxvalue_list[channel_index],
+            metadata.channelinfo.clims[channel_index][0]
+            * metadata.maxvalue_list[channel_index],
             0,
         )
         higher = np.round(
-            metadata.channelinfo.clims[channel_index][1] * metadata.maxvalue_list[channel_index],
+            metadata.channelinfo.clims[channel_index][1]
+            * metadata.maxvalue_list[channel_index],
             0,
         )
 
@@ -568,7 +877,9 @@ def write_omezarr(
     ome_zarr.writer.write_image(
         image=array5d,
         group=root,
-        axes=array5d.axes[1:].lower(),  # Skip first axis (Scene) and convert to lowercase
+        axes=array5d.axes[
+            1:
+        ].lower(),  # Skip first axis (Scene) and convert to lowercase
         storage_options=dict(chunks=(1, 1, 1, array5d.Y.size, array5d.X.size)),
     )
 
@@ -659,11 +970,20 @@ def write_omezarr_ngff(
 
     # define chunk size
     if chunks is None:
-        chunks = (1, array5d.shape[1], array5d.shape[2], array5d.shape[3], array5d.shape[4])
+        chunks = (
+            1,
+            array5d.shape[1],
+            array5d.shape[2],
+            array5d.shape[3],
+            array5d.shape[4],
+        )
 
     # create multi-scaled, chunked data structure from the image
     multiscales = nz.to_multiscales(
-        image, scale_factors=scale_factors, chunks=chunks, method=nz.Methods.DASK_IMAGE_GAUSSIAN
+        image,
+        scale_factors=scale_factors,
+        chunks=chunks,
+        method=nz.Methods.DASK_IMAGE_GAUSSIAN,
     )
 
     # add omera metadata for proper visualization
@@ -687,7 +1007,11 @@ def write_omezarr_ngff(
 
     # write using ngff-zarr
     nz.to_ngff_zarr(
-        zarr_path, version=version, chunks_per_shard=chunks_per_shard, use_tensorstore=False, multiscales=multiscales
+        zarr_path,
+        version=version,
+        chunks_per_shard=chunks_per_shard,
+        use_tensorstore=False,
+        multiscales=multiscales,
     )
 
     logger.info("=" * 80)
