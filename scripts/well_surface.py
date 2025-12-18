@@ -399,8 +399,8 @@ def main():
             z = surface.get_z_at_xy(x, y)
             status = "INSIDE"
         except ValueError:
-            z = surface.interpolator(x, y)
-            status = "OUTSIDE"
+            z = surface._extrapolate_z(x, y)
+            status = "OUTSIDE (EXTRAPOLATED)"
         print(f"Query XY ({x:8.1f}, {y:8.1f}) → Z={z:8.2f} [{status}]")
 
     print("\n" + "=" * 60)
