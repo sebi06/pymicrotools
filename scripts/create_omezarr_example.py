@@ -19,6 +19,7 @@ from ome_zarr_utils import (
     write_omezarr,
     write_omezarr_ngff,
     setup_logging,
+    convert_hcs_omezarr2ozx,
 )
 import ngff_zarr as nz
 from pathlib import Path
@@ -36,6 +37,13 @@ def main() -> None:
 
     # Mode selection: True for HCS (multi-well plate), False for standard OME-ZARR
     write_hcs: bool = True
+    convert_hc2ozx_after_writing = False
+    platename: str = "Test_Plate_01"
+
+    # use OZX (single file zipped OME-ZARR) - only works with NGFF-ZARR package (2025-11-19)
+    # NOTE: If you get PermissionError on Windows, disable antivirus or use write_hcs=False with use_ozx_write_directly=False?
+    # Not working as of 2025-11-25 for HCS conversion
+    write_ozx_directly: bool = False  # Changed to False to avoid Windows file locking issues
 
     # Backend library selection: OME_ZARR (ome-zarr-py) or NGFF_ZARR (ngff-zarr)
     # ome_package = omezarr_package.OME_ZARR
@@ -50,8 +58,8 @@ def main() -> None:
 
     # Option 2: Use absolute path to external test data
     # filepath: str = r"F:\Github\omezarr_playground\data\CellDivision5D.czi"
-    filepath: str = r"F:\Github\omezarr_playground\data\WP96_4Pos_B4-10_DAPI.czi"
-    # filepath: str = r"F:\Testdata_Zeiss\OME_ZARR_Testfiles\384well_DAPI_sm.czi"
+    # filepath: str = r"F:\Github\omezarr_playground\data\WP96_4Pos_B4-10_DAPI.czi"
+    filepath: str = r"F:\Testdata_Zeiss\OME_ZARR_Testfiles\384well_DAPI_sm.czi"
 
     # ========== Setup Logging (Master Log File) ==========
     czi_path = Path(filepath)
@@ -75,16 +83,26 @@ def main() -> None:
 
         elif ome_package == omezarr_package.NGFF_ZARR:
             logger.info("Using ngff-zarr package for HCS conversion...")
-            zarr_output_path = convert_czi2hcs_ngff(filepath, overwrite=True)
+            zarr_output_path = convert_czi2hcs_ngff(
+                filepath,
+                plate_name=platename,
+                overwrite=True,
+                write_ozx_directly=write_ozx_directly,
+                output_dir=None,
+            )
         else:
             raise ValueError(f"Unsupported ome_package: {ome_package}")
 
         logger.info(f"Converted to OME-ZARR HCS format at: {zarr_output_path}")
 
+        # Optional: Convert the HCS-ZARR directory to single-file OZX format
+        if convert_hc2ozx_after_writing:
+            zarr_output_path = convert_hcs_omezarr2ozx(zarr_output_path, remove_omezarr=True)
+
         # Validate the HCS-ZARR file against OME-NGFF specification
         # This ensures proper metadata structure for multi-well plate data
         logger.info("Validating created HCS-ZARR file against schema...")
-        _ = nz.from_hcs_zarr(zarr_output_path, validate=True)
+        hcs_plate = nz.from_hcs_zarr(zarr_output_path, validate=True)
         logger.info("Validation successful - HCS metadata conforms to specification.")
 
     # ========== Standard OME-ZARR Conversion (Non-HCS) ==========
@@ -111,8 +129,13 @@ def main() -> None:
             logger.info(f"Written OME-ZARR using ome-zarr-py: {zarr_output_path}")
 
         elif ome_package == omezarr_package.NGFF_ZARR:
-            # Generate output path with _ngff.ome.zarr extension
-            zarr_output_path: Path = Path(str(filepath)[:-4] + "_ngff.ome.zarr")
+
+            if write_ozx_directly:
+                # Generate output path with _ngff.ozx extension
+                zarr_output_path: Path = Path(str(filepath)[:-4] + "_ngff.ozx")
+            else:
+                # Generate output path with _ngff.ome.zarr extension
+                zarr_output_path: Path = Path(str(filepath)[:-4] + "_ngff.ome.zarr")
 
             # Write OME-ZARR using ngff-zarr backend with multi-resolution pyramid
             # scale_factors=[2, 4] creates 3 resolution levels (1x, 2x, 4x downsampled)
@@ -127,13 +150,13 @@ def main() -> None:
         try:
             import napari
 
-            logger.info("🔍 Opening ZARR file in napari viewer...")
+            logger.info("Opening ZARR file in napari viewer...")
             viewer = napari.Viewer()
             viewer.open(zarr_output_path, plugin="napari-ome-zarr")
             napari.run()
         except ImportError:
-            logger.warning("⚠️ napari is not installed. Skipping visualization.")
-            logger.info("💡 Install with: pip install napari[all] napari-ome-zarr")
+            logger.warning("Napari is not installed. Skipping visualization.")
+            logger.info("Install with: pip install napari[all] napari-ome-zarr")
 
 
 if __name__ == "__main__":
