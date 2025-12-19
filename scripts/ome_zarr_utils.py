@@ -369,7 +369,9 @@ class PlateConfiguration:
                 )
                 raise
 
-    def get_z_for_well(self, well_row: int, well_column: int) -> Optional[float]:
+    def get_z_for_well(
+        self, well_row: int, well_column: int, well_spacing: float = 9000
+    ) -> Optional[float]:
         """
         Get Z-coordinate for a well position based on surface calibration.
         Assumes well positions are based on standard well spacing.
@@ -377,6 +379,7 @@ class PlateConfiguration:
         Args:
             well_row (int): Row index (0-based)
             well_column (int): Column index (0-based)
+            well_spacing (float): Distance between wells in micrometers
 
         Returns:
             float: Z-coordinate for the well center
@@ -386,8 +389,8 @@ class PlateConfiguration:
 
         # Typical well spacing is 9000 micrometers for 96-well plates
         # Adjust based on your plate specifications
-        x = well_column * 9000.0
-        y = well_row * 9000.0
+        x = well_column * well_spacing
+        y = well_row * well_spacing
 
         return self.get_z_for_xy(x, y)
 

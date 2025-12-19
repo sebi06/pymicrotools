@@ -8,6 +8,8 @@ and use them to interpolate Z-values for any XY position.
 from ome_zarr_utils import PlateConfiguration, PlateType
 from well_surface import Point3D
 
+WELL_SPACING: int = 9000  # Micrometers between wells in a standard 96-well plate
+
 
 def example_basic_usage():
     """Basic example: Add surface points and query Z-values"""
@@ -79,7 +81,7 @@ def example_well_specific():
     ]
 
     for row, col, description in wells:
-        z = plate.get_z_for_well(row, col)
+        z = plate.get_z_for_well(row, col, well_spacing=WELL_SPACING)
         print(f"  Well {description}: Z = {z:10.2f}")
 
 
@@ -152,7 +154,7 @@ def example_custom_plate_with_calibration():
     # Query using well IDs
     print("\nUsing Well IDs:")
     print("-" * 70)
-    z_a1 = plate.get_z_for_well_id("A1")
+    z_a1 = plate.get_z_for_well_id("A1", well_spacing=WELL_SPACING)
     print(f"Well A1: Z = {z_a1:.2f}")
 
     z_center_well = plate.get_z_for_well_id("H12")
