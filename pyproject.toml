@@ -1,0 +1,11 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pymicrotools"
+version = "0.1.0"
+description = "Tools for working with OME-Zarr and CZI image formats"
+
+[tool.setuptools]
+packages = []
